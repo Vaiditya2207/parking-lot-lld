@@ -7,6 +7,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from parking_lot.api.controller import router
+from parking_lot.clock import DemoClock
 from parking_lot.core.parking_lot import ParkingLot
 from parking_lot.exceptions import ParkingError
 from parking_lot.models.floor import Floor
@@ -49,10 +50,14 @@ def build_service(db_path: str = "parking.db", floors=None, pricing: Optional[Pr
     return service
 
 
-def create_app(service: Optional[ParkingService] = None) -> FastAPI:
+def create_app(service: Optional[ParkingService] = None, clock: Optional[DemoClock] = None) -> FastAPI:
     logging.basicConfig(level=logging.INFO)
     app = FastAPI(title="Parking Lot Management System", version="1.0.0")
-    app.state.service = service or build_service()
+    if service is None:
+        clock = clock or DemoClock()
+        service = build_service(clock=clock)
+    app.state.service = service
+    app.state.clock = clock  # None when the caller brings its own service and clock
     app.include_router(router)
 
     @app.exception_handler(ParkingError)

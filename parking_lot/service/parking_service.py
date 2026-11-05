@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Callable, Dict
+from typing import Callable, Dict, List, Optional
 
 from parking_lot.core.parking_lot import ParkingLot
 from parking_lot.exceptions import TicketAlreadyClosedError, TicketNotFoundError, VehicleAlreadyParkedError
@@ -17,6 +17,14 @@ from parking_lot.repository.repositories import PaymentRepository, TicketReposit
 class ExitResult:
     ticket: Ticket
     receipt: PaymentReceipt
+
+
+@dataclass
+class SpotView:
+    spot_id: str
+    floor_number: int
+    size: str
+    ticket: Optional[Ticket]
 
 
 class ParkingService:
@@ -78,6 +86,13 @@ class ParkingService:
 
     def availability(self) -> Dict[int, Dict[str, int]]:
         return self._board.snapshot()
+
+    def spots(self) -> List[SpotView]:
+        """Every spot with the ticket parked in it, for the floor map."""
+        with self._lot.lock:
+            active = {t.spot_id: t for t in self._tickets.list_active()}
+            return [SpotView(s.spot_id, s.floor_number, s.size.name, active.get(s.spot_id))
+                    for s in self._lot.all_spots()]
 
     def _get_active(self, ticket_id: str) -> Ticket:
         ticket = self._tickets.get(ticket_id)

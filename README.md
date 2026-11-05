@@ -9,11 +9,15 @@ A multi-floor parking lot: vehicles get a spot and a ticket on entry, pay on exi
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-python main.py            # open http://127.0.0.1:8000/docs for the interactive demo
-pytest -q                 # 16 tests, including concurrency tests
+python main.py            # console at http://127.0.0.1:8000/, API docs at /docs
+pytest -q                 # 19 tests, including concurrency tests
 ```
 
-### Demo script (2 minutes)
+### Console
+
+`http://127.0.0.1:8000/` serves a small attendant console (`frontend/index.html`, plain HTML and JS, no build step). It shows the display board, a live floor map, park and pay forms with the fee breakdown, a request log with status codes, and buttons that fire concurrent requests to show the lock holding. "Add 1 hour" moves the lot's clock forward (`POST /demo/clock/advance`) so longer stays can be priced without waiting.
+
+### Demo script with curl (2 minutes)
 
 ```bash
 # 1. Park a car with EV charging
@@ -61,7 +65,7 @@ tests/              Unit, service, concurrency and API tests
 | 7 | API / Interface Design | `parking_lot/api/`: typed request/response models; Controller → Service → Repository |
 | 8 | Database Schema | `docs/diagrams.md` §6 + `SCHEMA` in `repository/repositories.py`: PKs, FKs, CHECKs, partial unique indexes |
 | 9 | Errors, Validation, Concurrency | `exceptions.py`, input validation (pydantic, factory, payments), lock in `ParkingService`, DB unique indexes, `tests/test_parking.py::test_concurrent_*` |
-| 10 | Working Implementation | `python main.py` + `/docs`; 16 passing tests |
+| 10 | Working Implementation | `python main.py`, console at `/`, API docs at `/docs`; 19 passing tests |
 
 ### Design patterns and why
 

@@ -41,6 +41,23 @@ class QuoteResponse(BaseModel):
     amount_due: float
 
 
+class SpotResponse(BaseModel):
+    spot_id: str
+    floor_number: int
+    size: str
+    occupied: bool
+    ticket: Optional[TicketResponse] = None
+
+
+class AdvanceClockRequest(BaseModel):
+    minutes: int = Field(gt=0, le=24 * 60, examples=[60])
+
+
+class ClockResponse(BaseModel):
+    now: datetime
+    offset_minutes: int
+
+
 class AvailabilityResponse(BaseModel):
     free_spots: Dict[int, Dict[str, int]]
 

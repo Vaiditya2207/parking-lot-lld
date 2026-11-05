@@ -1,11 +1,20 @@
 """Controller layer: HTTP in, HTTP out. No business rules here, only translation to and from the service."""
-from fastapi import APIRouter, Request
+from pathlib import Path
+from typing import List
 
-from parking_lot.api.schemas import (AvailabilityResponse, EntryRequest, ErrorResponse, ExitRequest,
-                                     ExitResponse, QuoteResponse, TicketResponse)
+from fastapi import APIRouter, Request
+from fastapi.responses import FileResponse
+
+from parking_lot.api.schemas import (AdvanceClockRequest, AvailabilityResponse, ClockResponse, EntryRequest,
+                                     ErrorResponse, ExitRequest, ExitResponse, QuoteResponse, SpotResponse,
+                                     TicketResponse)
+from parking_lot.clock import DemoClock
+from parking_lot.exceptions import DemoClockUnavailableError
 from parking_lot.models.ticket import Ticket
 from parking_lot.payments import create_payment
 from parking_lot.service.parking_service import ParkingService
+
+FRONTEND = Path(__file__).resolve().parents[2] / "frontend" / "index.html"
 
 router = APIRouter()
 ERRORS = {code: {"model": ErrorResponse} for code in (400, 402, 404, 409)}
@@ -43,3 +52,37 @@ def exit_lot(ticket_id: str, body: ExitRequest, request: Request):
 @router.get("/availability", response_model=AvailabilityResponse)
 def availability(request: Request):
     return AvailabilityResponse(free_spots=_service(request).availability())
+
+
+@router.get("/spots", response_model=List[SpotResponse])
+def spots(request: Request):
+    return [SpotResponse(spot_id=v.spot_id, floor_number=v.floor_number, size=v.size,
+                         occupied=v.ticket is not None,
+                         ticket=_to_response(v.ticket) if v.ticket else None)
+            for v in _service(request).spots()]
+
+
+def _clock(request: Request) -> DemoClock:
+    clock = request.app.state.clock
+    if clock is None:
+        raise DemoClockUnavailableError("The demo clock is not enabled on this server")
+    return clock
+
+
+@router.get("/demo/clock", response_model=ClockResponse, responses=ERRORS, tags=["demo"])
+def demo_clock(request: Request):
+    clock = _clock(request)
+    return ClockResponse(now=clock(), offset_minutes=clock.offset_minutes)
+
+
+@router.post("/demo/clock/advance", response_model=ClockResponse, responses=ERRORS, tags=["demo"])
+def advance_demo_clock(body: AdvanceClockRequest, request: Request):
+    """Moves the lot's clock forward so fees for longer stays can be shown live."""
+    clock = _clock(request)
+    clock.advance(body.minutes)
+    return ClockResponse(now=clock(), offset_minutes=clock.offset_minutes)
+
+
+@router.get("/", include_in_schema=False)
+def frontend():
+    return FileResponse(FRONTEND)

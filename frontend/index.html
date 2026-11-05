@@ -1,0 +1,799 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Parking Lot Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Doto:wght@800&family=Overpass+Mono:wght@400;600&family=Overpass:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --concrete: #DCDFE2;
+    --panel: #F5F6F7;
+    --paper: #FFFFFF;
+    --asphalt: #363B41;
+    --asphalt-dark: #2A2E33;
+    --paint: #F2F1EA;
+    --sign-blue: #1D4E9E;
+    --sign-blue-dark: #163C7A;
+    --sign-face: #181B20;
+    --led: #FFB020;
+    --led-dim: #5A4515;
+    --led-red: #FF5A47;
+    --ev: #2E9E55;
+    --ink: #1B2026;
+    --muted: #59616A;
+    --rule: #C9CED4;
+    --ok: #1D7A4A;
+    --ok-bg: #E3F2EA;
+    --error: #B42318;
+    --error-bg: #FBE7E5;
+    --body-car: #D3D9E0;
+    --glass: #5D6B7A;
+    --mono: "Overpass Mono", ui-monospace, Menlo, monospace;
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--concrete);
+    color: var(--ink);
+    font: 400 16px/1.5 "Overpass", "Helvetica Neue", Arial, sans-serif;
+  }
+  button, input, select { font: inherit; color: inherit; }
+  :focus-visible { outline: 3px solid var(--led); outline-offset: 2px; }
+  [hidden] { display: none !important; }
+
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 0 32px; }
+
+  /* ---------- header ---------- */
+  .top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding-top: 22px; padding-bottom: 18px; }
+  .sign {
+    width: 46px; height: 46px; flex: none;
+    display: grid; place-items: center;
+    background: var(--sign-blue); color: #fff;
+    border: 3px solid #fff; border-radius: 6px;
+    box-shadow: 0 0 0 2px var(--sign-blue);
+    font-weight: 800; font-size: 29px; line-height: 1; padding-top: 4px;
+  }
+  .top h1 { margin: 0; font-size: 25px; font-weight: 800; letter-spacing: -0.01em; }
+  .clock { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+  .clock-read { text-align: right; line-height: 1.2; }
+  .clock-read strong { display: block; font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .clock-read span { font-size: 13px; color: var(--muted); }
+  .clock-read span.ahead { color: var(--sign-blue); font-weight: 600; }
+
+  /* ---------- display board: the one loud element ---------- */
+  .board {
+    background: var(--sign-face);
+    border: 6px solid #2B3038;
+    border-radius: 10px;
+    padding: 16px 22px 14px;
+    display: flex; flex-wrap: wrap; align-items: stretch; gap: 10px 34px;
+    box-shadow: inset 0 0 0 1px #000;
+  }
+  .board-floor { display: flex; align-items: center; gap: 22px; }
+  .board-name { color: #C8CCD2; font-size: 15px; font-weight: 600; min-width: 56px; }
+  .board-cell { display: flex; flex-direction: column; align-items: center; min-width: 58px; }
+  .board-cell small { color: #8F969F; font-size: 12px; }
+  .led {
+    font-family: "Doto", var(--mono); font-weight: 800;
+    font-size: 46px; line-height: 1; color: var(--led);
+    text-shadow: 0 0 6px rgba(255, 176, 32, 0.55);
+    font-variant-numeric: tabular-nums;
+  }
+  .led.zero { color: var(--led-red); text-shadow: 0 0 6px rgba(255, 90, 71, 0.55); }
+  .led.flash { animation: led-flash 900ms ease-out; }
+  @keyframes led-flash {
+    0%, 30% { color: #fff; text-shadow: 0 0 14px rgba(255, 255, 255, 0.9); }
+    100% { }
+  }
+  .board-total { margin-left: auto; display: flex; align-items: center; gap: 14px; border-left: 2px solid #2E333A; padding-left: 28px; }
+  .board-total .board-name { min-width: 0; }
+  .board-note { margin: 8px 2px 0; font-size: 13px; color: var(--muted); }
+  .board-note code { font-family: var(--mono); font-size: 12.5px; }
+
+  /* ---------- layout ---------- */
+  main.wrap {
+    display: grid; grid-template-columns: minmax(0, 1fr) 372px; gap: 24px;
+    padding-top: 22px; padding-bottom: 48px;
+  }
+  .left { display: grid; gap: 22px; align-content: start; min-width: 0; }
+  .right { display: grid; gap: 18px; align-content: start; }
+
+  /* ---------- floor map ---------- */
+  #floors { display: grid; gap: 22px; }
+  .floor h2 { margin: 0 0 8px; font-size: 18px; font-weight: 800; }
+  .floor h2 small { font-weight: 400; color: var(--muted); font-size: 14px; margin-left: 8px; }
+  .deck { background: var(--asphalt); border-radius: 10px; padding: 18px 18px 0; overflow-x: auto; }
+  .bays { display: flex; align-items: stretch; }
+  .bay {
+    position: relative; height: 192px;
+    border: 0; border-left: 3px solid var(--paint); border-top: 3px solid var(--paint); border-radius: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+    padding: 10px 6px 8px; background: none; color: var(--paint); cursor: default;
+  }
+  .bay:last-child { border-right: 3px solid var(--paint); }
+  .bay[data-size="SMALL"]  { flex: 92 0 92px; }
+  .bay[data-size="MEDIUM"] { flex: 116 0 116px; }
+  .bay[data-size="LARGE"]  { flex: 156 0 156px; }
+  button.bay { cursor: pointer; }
+  button.bay:hover .vehicle, .bay.selected .vehicle { background: #fff; }
+  .bay.selected { background: rgba(255, 176, 32, 0.18); }
+  .bay-code { font-weight: 800; font-size: 15px; letter-spacing: 0.02em; }
+  .bay-size { font-size: 12px; opacity: 0.7; }
+  .bay .free-mark { margin: auto 0; font-size: 13px; opacity: 0.55; }
+  .vehicle {
+    position: relative; flex: none; background: var(--body-car);
+    border-radius: 14px 14px 8px 8px; margin-bottom: 8px;
+    display: flex; justify-content: center; transition: background 120ms;
+  }
+  .vehicle::before {
+    content: ""; position: absolute; top: 12px; left: 14%; right: 14%; height: 18px;
+    background: var(--glass); border-radius: 6px 6px 2px 2px;
+  }
+  .vehicle[data-type="BIKE"]  { width: 28px; height: 70px; border-radius: 12px; }
+  .vehicle[data-type="BIKE"]::before { top: 10px; height: 10px; left: 22%; right: 22%; }
+  .vehicle[data-type="CAR"]   { width: 64px; height: 92px; }
+  .vehicle[data-type="TRUCK"] { width: 100px; height: 108px; border-radius: 8px; }
+  .bolt {
+    position: absolute; bottom: 8px; width: 20px; height: 20px; border-radius: 50%;
+    background: var(--ev); color: #fff; display: grid; place-items: center; font-size: 12px; font-weight: 800;
+  }
+  .plate {
+    flex: none; background: #fff; color: var(--ink);
+    border: 1.5px solid var(--ink); border-radius: 3px;
+    font-family: var(--mono); font-weight: 600; font-size: 11px; line-height: 1; padding: 3px 4px 2px;
+    white-space: nowrap; margin-bottom: 6px;
+  }
+  .lane {
+    height: 34px; margin: 0 -18px;
+    background: linear-gradient(90deg, var(--paint) 0 28px, transparent 28px 52px) 18px 50% / 52px 3px repeat-x, var(--asphalt-dark);
+    border-radius: 0 0 10px 10px;
+  }
+  .arrived .vehicle { animation: pull-in 520ms cubic-bezier(.2,.8,.2,1); }
+  @keyframes pull-in { from { transform: translateY(70px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+  /* ---------- cards & forms ---------- */
+  .card { background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; padding: 20px; }
+  .card h2 { margin: 0 0 14px; font-size: 20px; font-weight: 800; }
+  .card > p.hint { margin: -8px 0 14px; color: var(--muted); font-size: 14px; }
+  .field { margin-bottom: 14px; }
+  .field-label, .field > label { display: block; font-weight: 600; font-size: 14px; margin-bottom: 6px; }
+  .seg { display: flex; border: 1.5px solid var(--ink); border-radius: 8px; overflow: hidden; }
+  .seg input { position: absolute; opacity: 0; pointer-events: none; }
+  .seg label {
+    flex: 1; margin: 0; text-align: center; padding: 8px 4px 6px; cursor: pointer;
+    font-weight: 600; font-size: 15px; border-left: 1.5px solid var(--ink);
+  }
+  .seg label:first-of-type { border-left: 0; }
+  .seg input:checked + label { background: var(--ink); color: #fff; }
+  .seg input:focus-visible + label { outline: 3px solid var(--led); outline-offset: -3px; }
+  .plate-input {
+    width: 100%; padding: 10px 12px 7px; font-family: var(--mono); font-size: 20px; font-weight: 600; letter-spacing: 0.06em;
+    text-transform: uppercase; background: #fff; border: 2px solid var(--ink); border-radius: 6px;
+  }
+  .plate-input::placeholder { color: #A9AFB6; }
+  .text-input, select { width: 100%; padding: 9px 10px 7px; background: #fff; border: 1.5px solid var(--muted); border-radius: 6px; }
+  .check { display: flex; align-items: center; gap: 10px; font-size: 15px; cursor: pointer; }
+  .check input { width: 18px; height: 18px; accent-color: var(--ev); }
+  .check b { color: #fff; background: var(--ev); border-radius: 4px; padding: 1px 6px 0; font-size: 13px; }
+  .btn {
+    width: 100%; padding: 12px 14px 9px; border: 0; border-radius: 8px; cursor: pointer;
+    background: var(--sign-blue); color: #fff; font-weight: 800; font-size: 16px;
+  }
+  .btn:hover { background: var(--sign-blue-dark); }
+  .btn:disabled { background: var(--rule); color: var(--muted); cursor: not-allowed; }
+  .btn.quiet { background: #fff; color: var(--ink); border: 1.5px solid var(--ink); font-weight: 600; }
+  .btn.quiet:hover { background: var(--concrete); }
+  .btn.quiet:disabled { background: var(--panel); color: var(--muted); border-color: var(--rule); }
+  .btn.small { width: auto; padding: 8px 12px 6px; font-size: 14px; }
+  .status { min-height: 1.5em; margin: 12px 0 0; font-size: 14px; }
+  .status.ok { color: var(--ok); }
+  .status.error { color: var(--error); }
+
+  .due { display: flex; align-items: baseline; justify-content: space-between; margin: 2px 0 6px; }
+  .due span { color: var(--muted); font-size: 14px; }
+  .due strong { font-size: 32px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .due-detail { color: var(--muted); font-size: 13px; margin: 0 0 14px; }
+  .breakdown { display: grid; grid-template-columns: 1fr auto; gap: 2px 14px; margin: 6px 0 0; font-size: 14px; color: var(--ink); }
+  .breakdown dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* ---------- paper: parking ticket + receipt ---------- */
+  .paper {
+    position: relative; background: var(--paper); margin-top: 16px;
+    padding: 18px 18px 16px; border-radius: 4px;
+    box-shadow: 0 1px 0 var(--rule), 0 6px 14px -8px rgba(27, 32, 38, 0.35);
+    -webkit-mask: radial-gradient(circle 6px at 50% 0, transparent 98%, #000) 0 0 / 16px 100% repeat-x;
+            mask: radial-gradient(circle 6px at 50% 0, transparent 98%, #000) 0 0 / 16px 100% repeat-x;
+    animation: print 380ms ease-out;
+  }
+  @keyframes print { from { clip-path: inset(0 0 100% 0); } to { clip-path: inset(0); } }
+  .paper-head { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 15px; margin-bottom: 10px; }
+  .paper-head .sign { width: 24px; height: 24px; font-size: 15px; border-width: 2px; box-shadow: 0 0 0 1px var(--sign-blue); padding-top: 2px; }
+  .paper-plate { font-family: var(--mono); font-weight: 600; font-size: 24px; letter-spacing: 0.06em; margin: 0 0 8px; }
+  .paper dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 14px; margin: 0; font-size: 14px; }
+  .paper dt { color: var(--muted); }
+  .paper dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+  .paper .id { font-family: var(--mono); font-size: 12px; color: var(--muted); margin: 10px 0 0; word-break: break-all; }
+  .paper .lines { border-top: 1.5px dashed var(--rule); margin-top: 10px; padding-top: 8px; }
+  .paper .total { border-top: 1.5px solid var(--ink); margin-top: 6px; padding-top: 6px; font-weight: 800; font-size: 16px; }
+
+  /* ---------- checks ---------- */
+  .checks { display: grid; gap: 10px; }
+  .check-row { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--rule); }
+  .check-row:first-child { border-top: 0; padding-top: 0; }
+  .check-row p { margin: 0; font-size: 14px; color: var(--muted); grid-column: 1 / -1; }
+  .check-row strong { font-size: 15px; }
+  .result { grid-column: 1 / -1; font-size: 14px; border-radius: 6px; padding: 7px 10px 5px; }
+  .result.ok { background: var(--ok-bg); color: var(--ok); }
+  .result.error { background: var(--error-bg); color: var(--error); }
+
+  /* ---------- request log ---------- */
+  .log-card h2 { display: flex; align-items: baseline; justify-content: space-between; }
+  .log-card h2 small { font-size: 14px; font-weight: 400; color: var(--muted); }
+  .log { list-style: none; margin: 0; padding: 0; font-size: 14px; max-height: 300px; overflow: auto; }
+  .log li { display: grid; grid-template-columns: 46px minmax(150px, auto) 1fr auto; gap: 12px; align-items: baseline; padding: 7px 0 5px; border-top: 1px solid var(--rule); }
+  .log li:first-child { border-top: 0; }
+  .code { font-family: var(--mono); font-weight: 600; font-size: 13px; text-align: center; border-radius: 4px; padding: 1px 0 0; }
+  .code.c2 { background: var(--ok-bg); color: var(--ok); }
+  .code.c4 { background: var(--error-bg); color: var(--error); }
+  .endpoint { font-family: var(--mono); font-size: 13px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .log time { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 13px; }
+  .log-empty { color: var(--muted); font-size: 14px; margin: 0; }
+
+  @media (max-width: 980px) {
+    main.wrap { grid-template-columns: minmax(0, 1fr); }
+    .wrap { padding: 0 16px; }
+    .board-total { margin-left: 0; border-left: 0; padding-left: 0; }
+    .log li { grid-template-columns: 46px 1fr auto; gap: 2px 12px; }
+    .log .endpoint { grid-column: 2; grid-row: 1; }
+    .log time { grid-column: 3; grid-row: 1; }
+    .log .msg { grid-column: 2 / -1; grid-row: 2; }
+    .log .msg:empty { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .arrived .vehicle, .led.flash, .paper { animation: none; }
+  }
+</style>
+</head>
+<body>
+  <header class="wrap top">
+    <div class="sign" aria-hidden="true">P</div>
+    <h1>Parking Lot Console</h1>
+    <div class="clock" id="clock" hidden>
+      <div class="clock-read">
+        <strong id="clock-time">--:--</strong>
+        <span id="clock-note">Lot clock</span>
+      </div>
+      <button class="btn quiet small" type="button" id="advance">Add 1 hour</button>
+    </div>
+  </header>
+
+  <section class="wrap" aria-label="Display board">
+    <div class="board" id="board" aria-live="polite"></div>
+    <p class="board-note">Free spaces, counted by the display board as cars park and leave. Read from <code>GET /availability</code>.</p>
+  </section>
+
+  <main class="wrap">
+    <div class="left">
+      <section id="floors" aria-label="Floor map"></section>
+      <section class="card log-card">
+        <h2>Requests <small id="log-count"></small></h2>
+        <p class="log-empty" id="log-empty">Every call this page makes to the API shows up here with its status code.</p>
+        <ul class="log" id="log" aria-live="polite"></ul>
+      </section>
+    </div>
+
+    <aside class="right">
+      <form class="card" id="park-form">
+        <h2>Park a vehicle</h2>
+        <div class="field">
+          <span class="field-label" id="type-label">Vehicle</span>
+          <div class="seg" role="radiogroup" aria-labelledby="type-label">
+            <input type="radio" name="vehicle_type" id="vt-bike" value="BIKE"><label for="vt-bike">Bike</label>
+            <input type="radio" name="vehicle_type" id="vt-car" value="CAR" checked><label for="vt-car">Car</label>
+            <input type="radio" name="vehicle_type" id="vt-truck" value="TRUCK"><label for="vt-truck">Truck</label>
+          </div>
+        </div>
+        <div class="field">
+          <label for="plate">Number plate</label>
+          <input class="plate-input" id="plate" required maxlength="15" placeholder="DL01AB1234" autocomplete="off">
+        </div>
+        <div class="field">
+          <label class="check"><input type="checkbox" id="ev"> Needs EV charging <b>+₹50</b></label>
+        </div>
+        <button class="btn" type="submit">Park vehicle</button>
+        <p class="status" id="park-status" role="status"></p>
+        <div id="ticket-paper"></div>
+      </form>
+
+      <form class="card" id="exit-form">
+        <h2>Exit and pay</h2>
+        <div class="field">
+          <label for="ticket">Parked vehicle</label>
+          <select id="ticket"></select>
+        </div>
+        <div class="due"><span>Amount due</span><strong id="amount">₹0.00</strong></div>
+        <div class="due-detail" id="due-detail">Pick a parked vehicle, or click one on the map.</div>
+        <div class="field">
+          <span class="field-label" id="pay-label">Payment</span>
+          <div class="seg" role="radiogroup" aria-labelledby="pay-label">
+            <input type="radio" name="payment_method" id="pm-cash" value="CASH" checked><label for="pm-cash">Cash</label>
+            <input type="radio" name="payment_method" id="pm-card" value="CARD"><label for="pm-card">Card</label>
+            <input type="radio" name="payment_method" id="pm-upi" value="UPI"><label for="pm-upi">UPI</label>
+          </div>
+        </div>
+        <div class="field" id="card-field" hidden>
+          <label for="card">Card number</label>
+          <input class="text-input" id="card" inputmode="numeric" maxlength="16" placeholder="16 digits; ending 0000 is declined" autocomplete="off">
+        </div>
+        <div class="field" id="upi-field" hidden>
+          <label for="upi">UPI ID</label>
+          <input class="text-input" id="upi" placeholder="name@bank" autocomplete="off">
+        </div>
+        <button class="btn" type="submit" id="pay-btn" disabled>Take payment</button>
+        <p class="status" id="exit-status" role="status"></p>
+        <div id="receipt-paper"></div>
+      </form>
+
+      <section class="card">
+        <h2>Concurrency checks</h2>
+        <p class="hint">Fire many requests at the same moment and see that the lock holds.</p>
+        <div class="checks">
+          <div class="check-row">
+            <strong>20 trucks race for the large bays</strong>
+            <button class="btn quiet small" type="button" id="race-entry">Run</button>
+            <p>Only large bays fit a truck. Every truck beyond the free large bays should get 409.</p>
+            <div class="result" id="race-entry-result" hidden></div>
+          </div>
+          <div class="check-row">
+            <strong>Pay one ticket 5 times at once</strong>
+            <button class="btn quiet small" type="button" id="race-exit" disabled>Run</button>
+            <p>Uses the vehicle picked in Exit and pay. It should be charged once; the rest get 409.</p>
+            <div class="result" id="race-exit-result" hidden></div>
+          </div>
+          <div class="check-row">
+            <strong>Empty the lot</strong>
+            <button class="btn quiet small" type="button" id="clear-lot" disabled>Run</button>
+            <p>Checks out every parked vehicle with cash, to reset between demos.</p>
+          </div>
+        </div>
+      </section>
+    </aside>
+  </main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const rupees = (n) => "₹" + Number(n).toFixed(2);
+const SIZE_NAME = { SMALL: "Small", MEDIUM: "Medium", LARGE: "Large" };
+const RATES = { BIKE: 10, CAR: 30, TRUCK: 60 };   // mirrors HourlyPricing.DEFAULT_RATES
+const EV_CHARGE = 50, GST = 0.18;                 // mirrors EVChargingCharge and GSTTax
+const state = { spots: [], board: null, clockOn: false, arrived: null, lastSpots: "", lastBoard: "" };
+let logCount = 0;
+
+/* ---------- API + request log ---------- */
+async function call(method, path, body, { quiet = false } = {}) {
+  let res, data = {};
+  try {
+    res = await fetch(path, {
+      method,
+      headers: body ? { "content-type": "application/json" } : {},
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    data = await res.json().catch(() => ({}));
+  } catch {
+    return { ok: false, status: 0, data, error: "The server is not responding. Is python main.py running?" };
+  }
+  const error = res.ok ? null
+    : data.message || (Array.isArray(data.detail) ? data.detail.map(d => d.msg).join(", ") : data.detail) || `Request failed (${res.status})`;
+  const result = { ok: res.ok, status: res.status, data, error, name: data.error };
+  if (!quiet) logRequest(result.status, method, path, result.ok ? null : `${result.name ? result.name + ": " : ""}${error}`);
+  return result;
+}
+
+function logRequest(status, method, path, note, okNote) {
+  logCount += 1;
+  $("log-empty").hidden = true;
+  $("log-count").textContent = `${logCount} so far`;
+  const li = document.createElement("li");
+  const code = document.createElement("span");
+  code.className = "code " + (status >= 200 && status < 300 ? "c2" : "c4");
+  code.textContent = status || "—";
+  const ep = document.createElement("span");
+  ep.className = "endpoint";
+  ep.textContent = `${method} ${path}`;
+  const msg = document.createElement("span");
+  msg.className = "msg";
+  msg.textContent = note || okNote || "";
+  const time = document.createElement("time");
+  time.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  li.append(code, ep, msg, time);
+  $("log").prepend(li);
+}
+
+function setStatus(el, text, kind) { el.textContent = text; el.className = "status " + (kind || ""); }
+function showResult(el, text, ok) { el.hidden = false; el.textContent = text; el.className = "result " + (ok ? "ok" : "error"); }
+const timeOf = (iso) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+/* ---------- display board ---------- */
+function renderBoard(free) {
+  const root = $("board");
+  const old = state.board || {};
+  root.innerHTML = "";
+  let total = 0;
+  Object.keys(free).sort().forEach(floor => {
+    const block = document.createElement("div");
+    block.className = "board-floor";
+    const name = document.createElement("span");
+    name.className = "board-name";
+    name.textContent = `Floor ${floor}`;
+    block.append(name);
+    ["SMALL", "MEDIUM", "LARGE"].forEach(size => {
+      const n = free[floor][size] ?? 0;
+      total += n;
+      const cell = document.createElement("div");
+      cell.className = "board-cell";
+      const led = document.createElement("span");
+      led.className = "led" + (n === 0 ? " zero" : "");
+      if (old[floor] && old[floor][size] !== n) led.classList.add("flash");
+      led.textContent = String(n).padStart(2, "0");
+      const label = document.createElement("small");
+      label.textContent = SIZE_NAME[size];
+      cell.append(led, label);
+      block.append(cell);
+    });
+    root.append(block);
+  });
+  const t = document.createElement("div");
+  t.className = "board-total";
+  t.innerHTML = `<span class="board-name">Total free</span><span class="led${total === 0 ? " zero" : ""}">${String(total).padStart(2, "0")}</span>`;
+  root.append(t);
+  state.board = free;
+}
+
+/* ---------- floor map ---------- */
+function renderFloors() {
+  const byFloor = {};
+  state.spots.forEach(s => (byFloor[s.floor_number] ||= []).push(s));
+  const selected = $("ticket").value;
+  const root = $("floors");
+  root.innerHTML = "";
+  Object.keys(byFloor).sort().forEach(floor => {
+    const list = byFloor[floor];
+    const free = list.filter(s => !s.occupied).length;
+    const section = document.createElement("div");
+    section.className = "floor";
+    section.innerHTML = `<h2>Floor ${floor}<small>${free} of ${list.length} free</small></h2>`;
+    const deck = document.createElement("div");
+    deck.className = "deck";
+    const bays = document.createElement("div");
+    bays.className = "bays";
+    list.forEach(s => {
+      const bay = document.createElement(s.occupied ? "button" : "div");
+      bay.className = "bay";
+      bay.dataset.size = s.size;
+      if (s.occupied) {
+        const t = s.ticket;
+        bay.type = "button";
+        if (t.ticket_id === selected) bay.classList.add("selected");
+        if (s.spot_id === state.arrived) bay.classList.add("arrived");
+        bay.setAttribute("aria-label", `${s.spot_id}: ${t.plate}. Select for exit`);
+        const v = document.createElement("div");
+        v.className = "vehicle";
+        v.dataset.type = t.vehicle_type;
+        if (t.ev_charging) v.innerHTML = '<span class="bolt" aria-hidden="true">⚡</span>';
+        const plate = document.createElement("div");
+        plate.className = "plate";
+        plate.textContent = t.plate;
+        bay.append(v, plate);
+        bay.addEventListener("click", () => selectTicket(t.ticket_id));
+      } else {
+        bay.innerHTML = '<span class="free-mark">Free</span>';
+      }
+      const code = document.createElement("span");
+      code.className = "bay-code";
+      code.textContent = s.spot_id;
+      const size = document.createElement("span");
+      size.className = "bay-size";
+      size.textContent = SIZE_NAME[s.size];
+      bay.append(code, size);
+      bays.append(bay);
+    });
+    const lane = document.createElement("div");
+    lane.className = "lane";
+    deck.append(bays, lane);
+    section.append(deck);
+    root.append(section);
+  });
+  state.arrived = null;
+}
+
+function renderTicketOptions() {
+  const select = $("ticket");
+  const current = select.value;
+  const parked = state.spots.filter(s => s.occupied);
+  select.innerHTML = "";
+  if (!parked.length) {
+    select.append(new Option("No vehicles parked", ""));
+    select.disabled = true;
+  } else {
+    select.disabled = false;
+    select.append(new Option("Choose a vehicle", ""));
+    parked.forEach(s => select.append(new Option(`${s.ticket.plate} in ${s.spot_id}`, s.ticket.ticket_id)));
+    if (parked.some(s => s.ticket.ticket_id === current)) select.value = current;
+  }
+  $("clear-lot").disabled = !parked.length;
+  if (current && !parked.some(s => s.ticket.ticket_id === current)) clearSelection();
+}
+
+async function refresh({ force = false } = {}) {
+  const [spots, avail] = await Promise.all([
+    call("GET", "/spots", null, { quiet: true }),
+    call("GET", "/availability", null, { quiet: true }),
+  ]);
+  if (!spots.ok || !avail.ok) {
+    $("board").innerHTML = '<span class="board-name">Cannot reach the server. Start it with python main.py.</span>';
+    return;
+  }
+  const s = JSON.stringify(spots.data), b = JSON.stringify(avail.data.free_spots);
+  if (force || s !== state.lastSpots) {
+    state.spots = spots.data;
+    state.lastSpots = s;
+    renderTicketOptions();
+    renderFloors();
+  }
+  if (force || b !== state.lastBoard) {
+    renderBoard(avail.data.free_spots);
+    state.lastBoard = b;
+  }
+}
+
+/* ---------- lot clock ---------- */
+async function refreshClock() {
+  const r = await call("GET", "/demo/clock", null, { quiet: true });
+  state.clockOn = r.ok;
+  $("clock").hidden = !r.ok;
+  if (!r.ok) return null;
+  $("clock-time").textContent = timeOf(r.data.now);
+  const h = Math.floor(r.data.offset_minutes / 60), m = r.data.offset_minutes % 60;
+  const note = $("clock-note");
+  if (r.data.offset_minutes) {
+    note.textContent = `Lot clock, ${h ? h + " h" : ""}${h && m ? " " : ""}${m ? m + " min" : ""} ahead`;
+    note.className = "ahead";
+  } else {
+    note.textContent = "Lot clock";
+    note.className = "";
+  }
+  return new Date(r.data.now);
+}
+
+/* ---------- fee breakdown (shown only when it matches the server's total) ---------- */
+function feeLines(ticket, until, total) {
+  const secs = Math.max((until - new Date(ticket.entry_time)) / 1000, 0);
+  const hours = Math.max(1, Math.ceil(secs / 3600));
+  const rate = RATES[ticket.vehicle_type];
+  const base = hours * rate;
+  const ev = ticket.ev_charging ? EV_CHARGE : 0;
+  const computed = Math.round((base + ev) * (1 + GST) * 100) / 100;
+  if (Math.abs(computed - total) > 0.005) return null;
+  const lines = [[`${hours} h × ${rupees(rate)}`, base]];
+  if (ev) lines.push(["EV charging", ev]);
+  lines.push(["GST 18%", total - base - ev]);
+  return lines;
+}
+
+/* ---------- exit ---------- */
+function clearSelection() {
+  $("ticket").value = "";
+  $("amount").textContent = rupees(0);
+  $("due-detail").textContent = "Pick a parked vehicle, or click one on the map.";
+  $("pay-btn").disabled = true;
+  $("race-exit").disabled = true;
+}
+
+async function selectTicket(ticketId) {
+  $("ticket").value = ticketId;
+  setStatus($("exit-status"), "");
+  renderFloors();
+  if (!ticketId) { clearSelection(); return; }
+  const spot = state.spots.find(s => s.ticket && s.ticket.ticket_id === ticketId);
+  const [q, now] = [await call("GET", `/tickets/${ticketId}/quote`), state.clockOn ? await refreshClock() : new Date()];
+  if (!q.ok) {
+    setStatus($("exit-status"), q.error, "error");
+    $("pay-btn").disabled = true;
+    return;
+  }
+  $("amount").textContent = rupees(q.data.amount_due);
+  const lines = spot && now ? feeLines(spot.ticket, now, q.data.amount_due) : null;
+  const detail = $("due-detail");
+  detail.replaceChildren(spot ? `Parked since ${timeOf(spot.ticket.entry_time)}.` : "");
+  if (lines) {
+    const dl = document.createElement("dl");
+    dl.className = "breakdown";
+    lines.forEach(([label, amount]) => {
+      const dt = document.createElement("dt"), dd = document.createElement("dd");
+      dt.textContent = label; dd.textContent = rupees(amount);
+      dl.append(dt, dd);
+    });
+    detail.append(dl);
+  } else {
+    detail.append(" Hourly rate, EV charge if used, then 18% GST.");
+  }
+  $("pay-btn").disabled = false;
+  $("race-exit").disabled = false;
+}
+
+function renderReceipt(r, method) {
+  const t = r.ticket;
+  const lines = feeLines(t, new Date(t.exit_time), r.amount_paid) || [["Parking fee", r.amount_paid]];
+  const paper = document.createElement("div");
+  paper.className = "paper";
+  paper.innerHTML = `<div class="paper-head"><span class="sign" aria-hidden="true">P</span>Receipt</div>`;
+  const plate = document.createElement("p");
+  plate.className = "paper-plate";
+  plate.textContent = t.plate;
+  const dl = document.createElement("dl");
+  const rows = [["Spot", t.spot_id], ["In", timeOf(t.entry_time)], ["Out", timeOf(t.exit_time)]];
+  const add = (list, target, cls) => list.forEach(([k, v]) => {
+    const dt = document.createElement("dt"), dd = document.createElement("dd");
+    dt.textContent = k; dd.textContent = v;
+    if (cls) { dt.className = cls; dd.className = cls; }
+    target.append(dt, dd);
+  });
+  add(rows, dl);
+  const fee = document.createElement("dl");
+  fee.className = "lines";
+  add(lines.map(([k, v]) => [k, rupees(v)]), fee);
+  const total = document.createElement("dl");
+  total.className = "total";
+  add([[`Paid by ${{ CASH: "cash", CARD: "card", UPI: "UPI" }[method]}`, rupees(r.amount_paid)]], total);
+  const ref = document.createElement("p");
+  ref.className = "id";
+  ref.textContent = `Reference ${r.payment_reference}`;
+  paper.append(plate, dl, fee, total, ref);
+  $("receipt-paper").replaceChildren(paper);
+}
+
+function renderTicket(t) {
+  const paper = document.createElement("div");
+  paper.className = "paper";
+  paper.innerHTML = `<div class="paper-head"><span class="sign" aria-hidden="true">P</span>Parking ticket</div>`;
+  const plate = document.createElement("p");
+  plate.className = "paper-plate";
+  plate.textContent = t.plate;
+  const dl = document.createElement("dl");
+  [["Spot", `${t.spot_id}, floor ${t.floor_number}`], ["Vehicle", t.vehicle_type.charAt(0) + t.vehicle_type.slice(1).toLowerCase()],
+   ["Entered", timeOf(t.entry_time)], ["EV charging", t.ev_charging ? "Yes, +₹50" : "No"]].forEach(([k, v]) => {
+    const dt = document.createElement("dt"), dd = document.createElement("dd");
+    dt.textContent = k; dd.textContent = v; dl.append(dt, dd);
+  });
+  const id = document.createElement("p");
+  id.className = "id";
+  id.textContent = `Ticket ${t.ticket_id}`;
+  paper.append(plate, dl, id);
+  $("ticket-paper").replaceChildren(paper);
+}
+
+/* ---------- events ---------- */
+$("park-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const payload = {
+    vehicle_type: e.target.querySelector('input[name="vehicle_type"]:checked').value,
+    plate: $("plate").value.trim().toUpperCase(),
+    ev_charging: $("ev").checked,
+  };
+  const r = await call("POST", "/entry", payload);
+  if (!r.ok) {
+    setStatus($("park-status"), r.error, "error");
+    $("ticket-paper").replaceChildren();
+    return;
+  }
+  const t = r.data;
+  state.arrived = t.spot_id;
+  setStatus($("park-status"), `Parked ${t.plate} in ${t.spot_id}.`, "ok");
+  renderTicket(t);
+  $("plate").value = "";
+  $("ev").checked = false;
+  await refresh({ force: true });
+});
+
+$("ticket").addEventListener("change", (e) => selectTicket(e.target.value));
+
+document.querySelectorAll('input[name="payment_method"]').forEach(r =>
+  r.addEventListener("change", () => {
+    const m = document.querySelector('input[name="payment_method"]:checked').value;
+    $("card-field").hidden = m !== "CARD";
+    $("upi-field").hidden = m !== "UPI";
+  }));
+
+$("exit-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const ticketId = $("ticket").value;
+  if (!ticketId) return;
+  const method = document.querySelector('input[name="payment_method"]:checked').value;
+  const payload = { payment_method: method };
+  if (method === "CARD") payload.card_number = $("card").value.trim();
+  if (method === "UPI") payload.upi_id = $("upi").value.trim();
+  const r = await call("POST", `/exit/${ticketId}`, payload);
+  if (!r.ok) {
+    setStatus($("exit-status"), r.status === 402 ? `${r.error}. The vehicle is still parked; try another payment.` : r.error, "error");
+    return;
+  }
+  const label = { CASH: "cash", CARD: "card", UPI: "UPI" }[method];
+  renderReceipt(r.data, method);
+  $("card").value = ""; $("upi").value = "";
+  clearSelection();
+  await refresh({ force: true });
+  setStatus($("exit-status"), `Paid ${rupees(r.data.amount_paid)} by ${label}. ${r.data.ticket.spot_id} is free.`, "ok");
+});
+
+$("advance").addEventListener("click", async () => {
+  const r = await call("POST", "/demo/clock/advance", { minutes: 60 });
+  if (!r.ok) return;
+  await refreshClock();
+  const id = $("ticket").value;
+  if (id) await selectTicket(id);
+});
+
+$("race-entry").addEventListener("click", async (e) => {
+  e.target.disabled = true;
+  const run = Date.now().toString(36).slice(-4).toUpperCase();
+  const plates = Array.from({ length: 20 }, (_, i) => `RACE${run}${String(i + 1).padStart(2, "0")}`);
+  const results = await Promise.all(plates.map(p =>
+    call("POST", "/entry", { vehicle_type: "TRUCK", plate: p }, { quiet: true })));
+  const won = results.filter(r => r.status === 201);
+  const full = results.filter(r => r.status === 409).length;
+  const other = results.length - won.length - full;
+  logRequest(won.length ? 201 : 409, "POST", "/entry ×20",
+    null, `${won.length} parked (201), ${full} turned away (409 LotFullError)${other ? `, ${other} other` : ""}`);
+  const bays = won.map(r => r.data.spot_id).join(" and ");
+  showResult($("race-entry-result"),
+    won.length
+      ? `${won.length} parked in ${bays}. ${full} got 409 Lot full. No bay was given out twice.`
+      : `All 20 got 409 Lot full: no large bay was free.`, other === 0);
+  await refresh({ force: true });
+  e.target.disabled = false;
+});
+
+$("race-exit").addEventListener("click", async (e) => {
+  const ticketId = $("ticket").value;
+  if (!ticketId) return;
+  e.target.disabled = true;
+  const results = await Promise.all(Array.from({ length: 5 }, () =>
+    call("POST", `/exit/${ticketId}`, { payment_method: "CASH" }, { quiet: true })));
+  const paid = results.filter(r => r.status === 200);
+  const refused = results.filter(r => r.status === 409).length;
+  logRequest(paid.length === 1 ? 200 : 409, "POST", `/exit/… ×5`, null,
+    `${paid.length} charged (200), ${refused} refused (409 TicketAlreadyClosedError)`);
+  showResult($("race-exit-result"),
+    paid.length === 1
+      ? `Charged once: ${rupees(paid[0].data.amount_paid)}. The other ${refused} got 409 Already paid.`
+      : `Charged ${paid.length} times. The lock did not hold.`, paid.length === 1);
+  if (paid.length) renderReceipt(paid[0].data, "CASH");
+  clearSelection();
+  await refresh({ force: true });
+});
+
+$("clear-lot").addEventListener("click", async (e) => {
+  e.target.disabled = true;
+  const parked = state.spots.filter(s => s.occupied);
+  let done = 0;
+  for (const s of parked) {
+    const r = await call("POST", `/exit/${s.ticket.ticket_id}`, { payment_method: "CASH" }, { quiet: true });
+    if (r.ok) done += 1;
+  }
+  logRequest(200, "POST", `/exit/… ×${parked.length}`, null, `Checked out ${done} of ${parked.length} vehicles with cash`);
+  $("ticket-paper").replaceChildren();
+  $("receipt-paper").replaceChildren();
+  clearSelection();
+  await refresh({ force: true });
+});
+
+refresh({ force: true }).then(refreshClock);
+setInterval(() => refresh().catch(() => {}), 3000);
+setInterval(() => { if (state.clockOn) refreshClock(); }, 30000);
+</script>
+</body>
+</html>

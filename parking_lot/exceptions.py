@@ -31,3 +31,7 @@ class TicketAlreadyClosedError(ParkingError):
 
 class PaymentFailedError(ParkingError):
     status_code = 402
+
+
+class DemoClockUnavailableError(ParkingError):
+    status_code = 404

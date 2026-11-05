@@ -5,6 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from parking_lot.app import build_service, create_app
+from parking_lot.clock import DemoClock
 from parking_lot.core.parking_lot import ParkingLot
 from parking_lot.exceptions import (InvalidInputError, LotFullError, PaymentFailedError,
                                     TicketAlreadyClosedError, TicketNotFoundError, VehicleAlreadyParkedError)
@@ -203,3 +204,30 @@ def test_api_errors(service):
     bad_card = client.post(f"/exit/{r.json()['ticket_id']}",
                            json={"payment_method": "CARD", "card_number": "4111111111110000"})
     assert bad_card.status_code == 402
+
+
+def test_api_spots_and_frontend(service):
+    client = TestClient(create_app(service))
+    client.post("/entry", json={"vehicle_type": "BIKE", "plate": "B1"})
+    spots = client.get("/spots").json()
+    assert len(spots) == 12
+    taken = [s for s in spots if s["occupied"]]
+    assert len(taken) == 1 and taken[0]["ticket"]["plate"] == "B1" and taken[0]["spot_id"] == "F1-S1"
+    page = client.get("/")
+    assert page.status_code == 200 and "Parking Lot Console" in page.text
+
+
+def test_api_demo_clock_moves_fees_forward(tmp_path):
+    clock = DemoClock()
+    client = TestClient(create_app(build_service(str(tmp_path / "t.db"), clock=clock), clock=clock))
+    ticket_id = client.post("/entry", json={"vehicle_type": "CAR", "plate": "DL01", "ev_charging": True}).json()["ticket_id"]
+    assert client.get(f"/tickets/{ticket_id}/quote").json()["amount_due"] == round(80 * 1.18, 2)  # 1 h: (30 + 50) x 1.18
+    r = client.post("/demo/clock/advance", json={"minutes": 61})
+    assert r.status_code == 200 and r.json()["offset_minutes"] == 61
+    assert client.get(f"/tickets/{ticket_id}/quote").json()["amount_due"] == 129.8  # 2 h: (60 + 50) x 1.18
+    assert client.post("/demo/clock/advance", json={"minutes": 0}).status_code == 422
+
+
+def test_api_demo_clock_off_without_demo_clock(service):
+    client = TestClient(create_app(service))
+    assert client.get("/demo/clock").json()["error"] == "DemoClockUnavailableError"
